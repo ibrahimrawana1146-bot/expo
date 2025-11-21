@@ -1,4 +1,180 @@
----
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as DocumentPicker from "expo-document-picker";
+import Papa from "papaparse";
+
+export default function App() {
+  const [records, setRecords] = useState([]);
+  const [searchCnic, setSearchCnic] = useState("");
+  const [searchName, setSearchName] = useState("");
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const [newCnic, setNewCnic] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newFather, setNewFather] = useState("");
+  const [newHouse, setNewHouse] = useState("");
+  const [newSerial, setNewSerial] = useState("");
+
+  useEffect(() => {
+    loadRecords();
+  }, []);
+
+  const loadRecords = async () => {
+    const saved = await AsyncStorage.getItem("records");
+    if (saved) setRecords(JSON.parse(saved));
+  };
+
+  // Add single record
+  const saveRecord = async () => {
+    if (!newCnic || !newName) return;
+
+    const updated = [
+      ...records,
+      { cnic: newCnic, name: newName, father: newFather, house: newHouse, serial: newSerial },
+    ];
+
+    setRecords(updated);
+    await AsyncStorage.setItem("records", JSON.stringify(updated));
+
+    setModalVisible(false);
+    setNewCnic("");
+    setNewName("");
+    setNewFather("");
+    setNewHouse("");
+    setNewSerial("");
+  };
+
+  // Import CSV for bulk records
+  const importVoters = async () => {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ type: "text/csv" });
+      if (res.type === "success") {
+        const file = await fetch(res.uri);
+        const text = await file.text();
+        const parsed = Papa.parse(text, { header: true });
+        const newRecords = parsed.data.filter((r) => r.cnic && r.name); // ignore empty rows
+        const allRecords = [...records, ...newRecords];
+        setRecords(allRecords);
+        await AsyncStorage.setItem("records", JSON.stringify(allRecords));
+        alert("Voters imported successfully!");
+      }
+    } catch (err) {
+      alert("Error importing CSV: " + err.message);
+    }
+  };
+
+  // Search logic
+  const byCnic = records.find((r) => r.cnic === searchCnic);
+  const byName = records.find((r) => r.name.toLowerCase() === searchName.toLowerCase());
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Voter Record Lookup</Text>
+
+      <TouchableOpacity style={styles.importBtn} onPress={importVoters}>
+        <Text style={styles.importText}>Import CSV</Text>
+      </TouchableOpacity>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Search by CNIC"
+        value={searchCnic}
+        onChangeText={setSearchCnic}
+        keyboardType="numeric"
+      />
+
+      <TextInput
+        style={styles.input}
+        placeholder="Search by Name"
+        value={searchName}
+        onChangeText={setSearchName}
+      />
+
+      <ScrollView style={{ marginTop: 20 }}>
+        {searchCnic.length > 0 && byCnic && (
+          <View style={styles.box}>
+            <Text style={styles.label}>Name: {byCnic.name}</Text>
+            <Text style={styles.label}>Father Name: {byCnic.father}</Text>
+            <Text style={styles.label}>CNIC: {byCnic.cnic}</Text>
+            <Text style={styles.label}>House: {byCnic.house}</Text>
+            <Text style={styles.label}>Serial: {byCnic.serial}</Text>
+          </View>
+        )}
+
+        {searchName.length > 0 && byName && (
+          <View style={styles.box}>
+            <Text style={styles.label}>Name: {byName.name}</Text>
+            <Text style={styles.label}>Father Name: {byName.father}</Text>
+            <Text style={styles.label}>CNIC: {byName.cnic}</Text>
+            <Text style={styles.label}>House: {byName.house}</Text>
+            <Text style={styles.label}>Serial: {byName.serial}</Text>
+          </View>
+        )}
+
+        {(searchCnic.length > 0 && !byCnic) && <Text style={styles.notFound}>No record found</Text>}
+        {(searchName.length > 0 && !byName) && <Text style={styles.notFound}>No record found</Text>}
+      </ScrollView>
+
+      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+
+      {/* Modal to add single record */}
+      <Modal visible={modalVisible} transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Add New Record</Text>
+
+            <TextInput style={styles.modalInput} placeholder="CNIC" value={newCnic} onChangeText={setNewCnic} />
+            <TextInput style={styles.modalInput} placeholder="Name" value={newName} onChangeText={setNewName} />
+            <TextInput style={styles.modalInput} placeholder="Father Name" value={newFather} onChangeText={setNewFather} />
+            <TextInput style={styles.modalInput} placeholder="House Number" value={newHouse} onChangeText={setNewHouse} />
+            <TextInput style={styles.modalInput} placeholder="Serial Number" value={newSerial} onChangeText={setNewSerial} />
+
+            <TouchableOpacity style={styles.saveBtn} onPress={saveRecord}>
+              <Text style={styles.saveText}>Save</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+              <Text style={styles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// Styles
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, marginTop: 40, backgroundColor: "#fff" },
+  title: { fontSize: 26, fontWeight: "bold", marginBottom: 20 },
+  importBtn: { backgroundColor: "blue", padding: 12, borderRadius: 8, marginBottom: 15 },
+  importText: { color: "#fff", textAlign: "center", fontSize: 16 },
+  input: { borderWidth: 1, borderColor: "#333", padding: 12, borderRadius: 8, marginBottom: 12 },
+  box: { padding: 15, backgroundColor: "#eee", borderRadius: 10, marginBottom: 15 },
+  label: { fontSize: 18 },
+  notFound: { fontSize: 18, marginTop: 10, color: "red" },
+  fab: { position: "absolute", bottom: 25, right: 25, backgroundColor: "black", width: 60, height: 60, borderRadius: 30, justifyContent: "center", alignItems: "center" },
+  fabText: { fontSize: 32, color: "#fff" },
+  modalContainer: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
+  modalBox: { width: "85%", backgroundColor: "#fff", borderRadius: 10, padding: 20 },
+  modalTitle: { fontSize: 22, fontWeight: "bold", marginBottom: 15 },
+  modalInput: { borderWidth: 1, borderColor: "#333", padding: 10, borderRadius: 8, marginBottom: 10 },
+  saveBtn: { backgroundColor: "black", padding: 12, borderRadius: 8, marginTop: 10 },
+  saveText: { color: "white", fontSize: 18, textAlign: "center" },
+  cancelBtn: { padding: 12, marginTop: 10 },
+  cancelText: { textAlign: "center", fontSize: 16 },
+});
 title: Create your first build
 description: Learn how to create a build for your app with EAS Build.
 ---
